@@ -1,0 +1,300 @@
+#pragma version 8
+
+// insurance.algo.dappInsurance.approval_program() -> uint64:
+main_block@0:
+        txn ApplicationID
+        bnz main_entrypoint@2
+
+main_on_create@1:
+        callsub __init__
+
+main_entrypoint@2:
+        txn NumAppArgs
+        bz main_after_if_else@10
+
+main_abi_routing@3:
+        txna ApplicationArgs 0
+        method "create(account,account)void"
+        method "registerAsset(string,uint64,string,string)void"
+        method "reviewRequest(bool,string)void"
+        method "receiveToken(asset)void"
+        uncover 4
+        match main_create_route@4 main_registerAsset_route@5 main_reviewRequest_route@6 main_receiveToken_route@7
+        b main_switch_case_default@8
+
+main_create_route@4:
+        txn OnCompletion
+        int NoOp
+        ==
+        assert // OnCompletion is NoOp
+        txn ApplicationID
+        !
+        assert // is creating
+        txna ApplicationArgs 1
+        btoi
+        txnas Accounts
+        txna ApplicationArgs 2
+        btoi
+        txnas Accounts
+        callsub create
+        int 1
+        return
+
+main_registerAsset_route@5:
+        txn OnCompletion
+        int NoOp
+        ==
+        assert // OnCompletion is NoOp
+        txn ApplicationID
+        assert // is not creating
+        txna ApplicationArgs 1
+        txna ApplicationArgs 2
+        txna ApplicationArgs 3
+        txna ApplicationArgs 4
+        callsub registerAsset
+        int 1
+        return
+
+main_reviewRequest_route@6:
+        txn OnCompletion
+        int NoOp
+        ==
+        assert // OnCompletion is NoOp
+        txn ApplicationID
+        assert // is not creating
+        txna ApplicationArgs 1
+        txna ApplicationArgs 2
+        callsub reviewRequest
+        int 1
+        return
+
+main_receiveToken_route@7:
+        txn OnCompletion
+        int NoOp
+        ==
+        assert // OnCompletion is NoOp
+        txn ApplicationID
+        assert // is not creating
+        txna ApplicationArgs 1
+        btoi
+        txnas Assets
+        callsub receiveToken
+        int 1
+        return
+
+main_switch_case_default@8:
+
+main_switch_case_next@9:
+
+main_after_if_else@10:
+        err // reject transaction
+
+
+// insurance.algo.dappInsurance.create(analyst#0: bytes, customer#0: bytes) -> void:
+create:
+        proto 2 0
+
+create_block@0:
+        byte "analyst"
+        frame_dig -2
+        app_global_put
+        byte "customer"
+        frame_dig -1
+        app_global_put
+        byte "assetStatus"
+        byte "none"
+        app_global_put
+        retsub
+
+
+// insurance.algo.dappInsurance.registerAsset(assetName#0: bytes, assetValue#0: bytes, assetType#0: bytes, assetDescription#0: bytes) -> void:
+registerAsset:
+        proto 4 0
+
+registerAsset_block@0:
+        txn Sender
+        int 0
+        byte "customer"
+        app_global_get_ex
+        assert // check value exists
+        ==
+        assert // Only registered customer can register asset
+        frame_dig -4
+        extract 2 0
+        byte "assetName"
+        swap
+        app_global_put
+        frame_dig -3
+        btoi
+        byte "assetValue"
+        swap
+        app_global_put
+        frame_dig -2
+        extract 2 0
+        byte "assetType"
+        swap
+        app_global_put
+        frame_dig -1
+        extract 2 0
+        byte "assetDescription"
+        swap
+        app_global_put
+        byte "assetStatus"
+        byte "requested"
+        app_global_put
+        retsub
+
+
+// insurance.algo.dappInsurance.reviewRequest(acceptance#0: bytes, analystComments#0: bytes) -> void:
+reviewRequest:
+        proto 2 0
+
+reviewRequest_block@0:
+        txn Sender
+        int 0
+        byte "analyst"
+        app_global_get_ex
+        assert // check value exists
+        ==
+        assert // Only registered analyst can review request
+        int 0
+        byte "assetStatus"
+        app_global_get_ex
+        assert // check value exists
+        byte "accepted"
+        ==
+        !
+        assert // Asset already accepted
+        int 0
+        byte "assetStatus"
+        app_global_get_ex
+        assert // check value exists
+        byte "insured"
+        ==
+        !
+        assert // Asset already insured
+        frame_dig -1
+        extract 2 0
+        byte "analystComments"
+        swap
+        app_global_put
+        frame_dig -2
+        byte 0x00
+        !=
+        bz reviewRequest_else_body@2
+
+reviewRequest_if_body@1:
+        byte "assetStatus"
+        byte "accepted"
+        app_global_put
+        itxn_begin
+        int acfg
+        itxn_field TypeEnum
+        int 0
+        itxn_field Fee
+        int 1
+        itxn_field ConfigAssetTotal
+        int 0
+        itxn_field ConfigAssetDecimals
+        byte "Insurance"
+        itxn_field ConfigAssetName
+        byte "INS"
+        itxn_field ConfigAssetUnitName
+        byte "Token for the asset"
+        itxn_field Note
+        itxn_submit
+        itxn CreatedAssetID
+        byte "asaId"
+        swap
+        app_global_put
+        b reviewRequest_after_if_else@3
+
+reviewRequest_else_body@2:
+        byte "assetStatus"
+        byte "rejected"
+        app_global_put
+
+reviewRequest_after_if_else@3:
+        retsub
+
+
+// insurance.algo.dappInsurance.receiveToken(asset#0: uint64) -> void:
+receiveToken:
+        proto 1 0
+
+receiveToken_block@0:
+        txn Sender
+        int 0
+        byte "customer"
+        app_global_get_ex
+        assert // check value exists
+        ==
+        assert // Only registered customer can receive token
+        int 0
+        byte "assetStatus"
+        app_global_get_ex
+        assert // check value exists
+        byte "accepted"
+        ==
+        assert // Asset not accepted
+        int 0
+        byte "asaId"
+        app_global_get_ex
+        assert // check value exists
+        frame_dig -1
+        ==
+        assert // ASA ID not matching
+        itxn_begin
+        int axfer
+        itxn_field TypeEnum
+        int 0
+        itxn_field Fee
+        txn Sender
+        itxn_field AssetReceiver
+        frame_dig -1
+        itxn_field XferAsset
+        int 1
+        itxn_field AssetAmount
+        itxn_submit
+        byte "assetStatus"
+        byte "insured"
+        app_global_put
+        retsub
+
+
+// insurance.algo.dappInsurance.__init__() -> void:
+__init__:
+        proto 0 0
+
+__init___block@0:
+        global ZeroAddress
+        byte "analyst"
+        swap
+        app_global_put
+        global ZeroAddress
+        byte "customer"
+        swap
+        app_global_put
+        byte "assetName"
+        byte ""
+        app_global_put
+        byte "assetValue"
+        int 0
+        app_global_put
+        byte "assetType"
+        byte ""
+        app_global_put
+        byte "assetDescription"
+        byte ""
+        app_global_put
+        byte "assetStatus"
+        byte ""
+        app_global_put
+        byte "analystComments"
+        byte ""
+        app_global_put
+        byte "asaId"
+        int 0
+        app_global_put
+        retsub
+
